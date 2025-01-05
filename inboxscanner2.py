@@ -19,14 +19,14 @@ class EmailScanner:
         self.domain_data = defaultdict(lambda: {
             'senders': defaultdict(int),  # Track frequency per sender
             'categories': set(),          # Track categories this domain belongs to
-            'unsubscribe_data': {}        # Store unsubscribe data
+            'unsubscribe_data': {},       # Store unsubscribe data
+            'list_unsubscribe': False     # Track List-Unsubscribe header presence
         })
         self.personalized_senders = set()
         self.previously_scanned = self._load_previous_scans()
         self.skipped_count = 0
 
     def connect(self):
-         
         try:
             # Ensure email and password are properly encoded
             self.email_address = self.email_address.encode('ascii', 'ignore').decode('ascii')
@@ -51,7 +51,6 @@ class EmailScanner:
             return False
 
     def scan_emails(self, months_back=6):
-         
         if not hasattr(self, 'mail'):
             print("Not connected to email server")
             return
@@ -83,9 +82,13 @@ class EmailScanner:
                     # Process sender information
                     self._process_sender(from_header)
                     
+                    # Check for List-Unsubscribe header
+                    domain = self._extract_domain_from_email(from_header)
+                    if email_message.get('List-Unsubscribe'):
+                        self.domain_data[domain]['list_unsubscribe'] = True
+                    
                     # Add to previously scanned if needed
                     if from_header not in self.previously_scanned:
-                        domain = self._extract_domain_from_email(from_header)
                         if domain in self.previously_scanned:
                             self.skipped_count += 1
                             continue
@@ -98,7 +101,6 @@ class EmailScanner:
                 continue
 
     def _extract_domain_from_email(self, email_str: str) -> str:
-         
         try:
             # First try to parse as email address
             _, email_addr = parseaddr(email_str)
@@ -122,7 +124,6 @@ class EmailScanner:
         return email_str.lower()  # Return original string as fallback
 
     def _normalize_service_name(self, service: str) -> str:
-         
         service = service.lower()
         
         # Common service name mappings
@@ -144,7 +145,6 @@ class EmailScanner:
         return service
 
     def _load_previous_scans(self):
-         
         try:
             with open('previously_scanned.txt', 'r', encoding='utf-8') as f:
                 return set(line.strip() for line in f if line.strip())
@@ -152,7 +152,6 @@ class EmailScanner:
             return set()
 
     def _save_previous_scans(self):
-         
         all_items = set()
         
         # Add all domains and their senders
@@ -171,7 +170,6 @@ class EmailScanner:
                 f.write(f"{item}\n")
 
     def _decode_header(self, header_content):
-         
         if not header_content:
             return ""
         try:
@@ -187,7 +185,6 @@ class EmailScanner:
             return ""
 
     def _decode_content(self, content):
-         
         if not content:
             return ""
         try:
@@ -202,7 +199,6 @@ class EmailScanner:
             return ""
 
     def _process_sender(self, from_header: str, category: str = None):
-         
         domain = self._extract_domain_from_email(from_header)
         name, email_addr = parseaddr(from_header)
         
@@ -214,12 +210,16 @@ class EmailScanner:
             self.domain_data[domain]['categories'].add(category)
 
     def _process_content(self, email_message):
-         
         sender = self._decode_header(email_message['from'])
         subject = self._decode_header(email_message['subject'])
         
         if sender:
             self._process_sender(sender)
+            
+            # Check for List-Unsubscribe header
+            domain = self._extract_domain_from_email(sender)
+            if email_message.get('List-Unsubscribe'):
+                self.domain_data[domain]['list_unsubscribe'] = True
         
         if self.name_to_scan in subject.lower():
             if sender:
@@ -247,7 +247,6 @@ class EmailScanner:
                     continue
 
     def _find_accounts(self, content):
-         
         found_services = set()
         patterns = {
             'Social Media': r'(?i)(facebook|twitter|instagram|linkedin|tiktok|reddit|snapchat|pinterest)',
@@ -270,13 +269,11 @@ class EmailScanner:
         return found_services
 
     def _find_personalization(self, content, sender):
-         
         if self.name_to_scan in content.lower():
             if sender:
                 self.personalized_senders.add(sender)
 
     def _process_unsubscribe_url(self, url: str, service: str, timestamp: datetime):
-         
         try:
             parsed_url = urlparse(url)
             query_params = parse_qs(parsed_url.query)
@@ -305,7 +302,6 @@ class EmailScanner:
             print(f"Error processing unsubscribe URL: {str(e)}")
 
     def _extract_unsubscribe_info(self, email_message, content: str, service: str):
-         
         timestamp = email.utils.parsedate_to_datetime(email_message['date']) if email_message['date'] else datetime.now()
         
         # Check List-Unsubscribe header
@@ -328,7 +324,6 @@ class EmailScanner:
                 self._process_unsubscribe_url(match.group(), service, timestamp)
 
     def save_to_file(self):
-         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Save personalized senders
@@ -344,14 +339,15 @@ class EmailScanner:
         domains_filename = f"domain_analysis_{timestamp}.csv"
         with open(domains_filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            # Write header
+            # Write header with new column order
             writer.writerow([
+                'Delete',  # New empty column
+                'List-Unsubscribe',  # New column for List-Unsubscribe presence
                 'Domain',
                 'Categories',
                 'Unique Senders',
                 'Total Emails',
                 'Sender List',
-                'Unsubscribe URL',
                 'Token',
                 'Last Updated'
             ])
@@ -370,40 +366,37 @@ class EmailScanner:
                 senders_list = '; '.join(data['senders'].keys())
                 
                 # Get most recent unsubscribe data
-                unsubscribe_url = "No unsubscribe link"
                 token = "N/A"
                 timestamp = "N/A"
                 
                 if data['unsubscribe_data']:
                     most_recent = max(data['unsubscribe_data'].items(), key=lambda x: x[1][0])
-                    unsubscribe_url = most_recent[0]
                     timestamp, token = most_recent[1]
                     token = token if token else "No token"
                 
-                # Write row
+                # Write row with new column order
                 writer.writerow([
+                    '',  # Empty Delete column
+                    'Yes' if data['list_unsubscribe'] else 'No',  # List-Unsubscribe presence
                     domain,
                     categories,
                     sender_count,
                     total_emails,
                     senders_list,
-                    unsubscribe_url,
                     token,
                     timestamp
                 ])
         
         print(f"\nResults have been saved to:")
-        print(f"1. Personalized senders: {senders_filename}")
-        print(f"2. Domain analysis: {domains_filename}")
+        print(f"1. Domain analysis: {domains_filename}")
+        print(f"2. Personalized senders: {senders_filename}")
 
     def close(self):
-         
         if hasattr(self, 'mail'):
             self.mail.close()
             self.mail.logout()
 
 def parse_arguments():
-     
     parser = argparse.ArgumentParser(description='Email Account Scanner')
     parser.add_argument('-e', '--email', required=True, help='Email address to scan')
     parser.add_argument('-p', '--password', required=True, help='Email password or app password')
@@ -411,10 +404,7 @@ def parse_arguments():
     parser.add_argument('-m', '--months', type=int, default=12, help='Number of months to scan (default: 12)')
     parser.add_argument('-s', '--server', default='imap.gmail.com', help='IMAP server (default: imap.gmail.com)')
     
-    # Parse arguments and handle spaces in password
     args = parser.parse_args()
-    
-    # If password contains spaces, use it as is (no splitting)
     args.password = args.password
     
     return args
