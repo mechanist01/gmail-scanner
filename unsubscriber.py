@@ -27,7 +27,7 @@ class UnsubscribeAutomation:
         self.setup_logging()
 
     def setup_logging(self):
-        """Setup logging configuration"""
+         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_filename = f"unsubscribe_log_{timestamp}.txt"
         
@@ -42,7 +42,7 @@ class UnsubscribeAutomation:
         logging.info("Starting unsubscribe automation")
 
     def connect(self):
-        """Connect to both IMAP and SMTP servers"""
+         
         try:
             logging.info(f"Connecting to IMAP server: {self.imap_server}")
             self.mail = imaplib.IMAP4_SSL(self.imap_server)
@@ -61,21 +61,21 @@ class UnsubscribeAutomation:
             return False
 
     def decode_header_string(self, header):
-        """Decode an encoded email header string"""
+         
         logging.info("Decoding header string")
         try:
-            # Remove line breaks and extra whitespace
+ 
             header = ' '.join(header.split())
             
-            # First pass: decode the ASCII-encoded parts
+ 
             decoded = ''
             parts = re.findall(r'=\?us-ascii\?Q\?(.*?)\?=', header)
             
             if parts:
-                # Join all parts and decode
+ 
                 encoded = ''.join(parts)
                 
-                # Decode common email encodings
+ 
                 decoded = encoded.replace('=3D', '=')
                 decoded = decoded.replace('=3F', '?')
                 decoded = decoded.replace('=2E', '.')
@@ -96,10 +96,10 @@ class UnsubscribeAutomation:
             return header
 
     def parse_mailto(self, mailto_str):
-        """Parse mailto link to extract email, subject, and body"""
+         
         logging.info(f"Parsing mailto link: {mailto_str}")
         try:
-            # Clean up the mailto string first
+ 
             mailto_str = unquote(mailto_str.strip())
             if '?' in mailto_str:
                 email_part, params_part = mailto_str.split('?', 1)
@@ -107,7 +107,7 @@ class UnsubscribeAutomation:
                 email_part = mailto_str
                 params_part = ''
                 
-            # Extract parameters
+ 
             params = {}
             if params_part:
                 param_pairs = params_part.split('&')
@@ -128,7 +128,7 @@ class UnsubscribeAutomation:
             return None
 
     def send_unsubscribe_email(self, mailto_info):
-        """Send an unsubscribe email using the mailto information"""
+         
         logging.info(f"Preparing to send unsubscribe email to: {mailto_info['email']}")
         try:
             msg = MIMEMultipart()
@@ -148,16 +148,16 @@ class UnsubscribeAutomation:
             return False
     
     def clean_url(self, url):
-        """Clean and decode a URL string"""
+         
         logging.info(f"Cleaning URL: {url}")
         try:
-            # Fix the protocol separator
+ 
             url = url.replace('=3A//', '://')
             
-            # Remove any remaining =3A
+ 
             url = url.replace('=3A', ':')
             
-            # Fix other common encodings
+ 
             url = url.replace('=2E', '.')
             url = url.replace('=2F', '/')
             url = url.replace('=5F', '_')
@@ -166,7 +166,7 @@ class UnsubscribeAutomation:
             url = url.replace('=26', '&')
             url = url.replace('=3F', '?')
             
-            # Final unquote for any remaining percent-encoding
+ 
             url = unquote(url)
             
             logging.info(f"Cleaned URL: {url}")
@@ -176,17 +176,17 @@ class UnsubscribeAutomation:
             return url
 
     def extract_unsubscribe_info(self, header):
-        """Extract URLs and mailto addresses from List-Unsubscribe header"""
+         
         logging.info("Extracting unsubscribe info from header")
         try:
-            # Decode the header first
+ 
             decoded_header = self.decode_header_string(header)
             
-            # Look for valid URLs and mailto addresses
+ 
             urls = []
             mailtos = []
             
-            # Extract parts between < and >
+ 
             parts = re.findall(r'<([^>]+)>', decoded_header)
             
             for part in parts:
@@ -205,7 +205,7 @@ class UnsubscribeAutomation:
             return [], []
 
     def find_unsubscribe_info(self, domain, days_back=30):
-        """Find the List-Unsubscribe header from recent emails for this domain"""
+         
         logging.info(f"Searching for unsubscribe info for domain: {domain}")
         if not self.mail:
             logging.error("No IMAP connection available")
@@ -249,14 +249,14 @@ class UnsubscribeAutomation:
         return None, None
 
     def unsubscribe_from_domain(self, domain):
-        """Process unsubscription for a single domain"""
+         
         logging.info(f"\n{'='*50}\nProcessing unsubscribe request for {domain}")
         
         urls, mailtos = self.find_unsubscribe_info(domain)
         success = False
         
         if urls:
-            # Try each URL in case the first one fails
+ 
             for url in urls:
                 logging.info(f"Attempting HTTP unsubscribe: {url}")
                 try:
@@ -287,7 +287,7 @@ class UnsubscribeAutomation:
         return success
 
     def process_csv(self, csv_path):
-        """Process the domain analysis CSV file"""
+         
         logging.info(f"Processing CSV file: {csv_path}")
         try:
             with open(csv_path, 'r', encoding='utf-8') as f:
@@ -308,7 +308,7 @@ class UnsubscribeAutomation:
             logging.error(f"Error processing CSV: {str(e)}")
 
     def close(self):
-        """Close all connections"""
+         
         logging.info("Closing connections")
         if self.mail:
             try:
