@@ -6,15 +6,7 @@ A Python tool for analyzing your email inbox to discover and track your digital 
 
 - Scans email inbox for specified time periods (default: 12 months)
 - Groups communications by domain with frequency tracking
-- Identifies linked services and accounts across multiple categories:
-  - Social Media (Facebook, Twitter, Instagram, etc.)
-  - Shopping (Amazon, eBay, Etsy, etc.)
-  - Finance (PayPal, Stripe, banking, crypto)
-  - Cloud Services (Google, Dropbox, iCloud)
-  - Subscription Services (Netflix, Spotify, Disney+)
-  - Gaming (Steam, Epic, PlayStation)
-  - Professional (Slack, Zoom, GitHub)
-  - Travel (Airbnb, Booking, Uber)
+- Identifies linked services and accounts
 - Detects personalized emails using your name
 - Extracts and tracks unsubscribe links with tokens
 - Maintains history of scanned emails to avoid duplicates
