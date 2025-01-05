@@ -26,7 +26,7 @@ class EmailScanner:
         self.skipped_count = 0
 
     def connect(self):
-        """Establish connection to the IMAP server"""
+         
         try:
             # Ensure email and password are properly encoded
             self.email_address = self.email_address.encode('ascii', 'ignore').decode('ascii')
@@ -51,7 +51,7 @@ class EmailScanner:
             return False
 
     def scan_emails(self, months_back=6):
-        """Scan emails for the specified period"""
+         
         if not hasattr(self, 'mail'):
             print("Not connected to email server")
             return
@@ -98,7 +98,7 @@ class EmailScanner:
                 continue
 
     def _extract_domain_from_email(self, email_str: str) -> str:
-        """Extract domain from email address or string containing email"""
+         
         try:
             # First try to parse as email address
             _, email_addr = parseaddr(email_str)
@@ -122,7 +122,7 @@ class EmailScanner:
         return email_str.lower()  # Return original string as fallback
 
     def _normalize_service_name(self, service: str) -> str:
-        """Normalize service names for consistent matching"""
+         
         service = service.lower()
         
         # Common service name mappings
@@ -144,7 +144,7 @@ class EmailScanner:
         return service
 
     def _load_previous_scans(self):
-        """Load previously scanned senders and accounts from file"""
+         
         try:
             with open('previously_scanned.txt', 'r', encoding='utf-8') as f:
                 return set(line.strip() for line in f if line.strip())
@@ -152,7 +152,7 @@ class EmailScanner:
             return set()
 
     def _save_previous_scans(self):
-        """Save all scanned senders and accounts to file"""
+         
         all_items = set()
         
         # Add all domains and their senders
@@ -171,7 +171,7 @@ class EmailScanner:
                 f.write(f"{item}\n")
 
     def _decode_header(self, header_content):
-        """Safely decode email header"""
+         
         if not header_content:
             return ""
         try:
@@ -187,7 +187,7 @@ class EmailScanner:
             return ""
 
     def _decode_content(self, content):
-        """Safely decode email content"""
+         
         if not content:
             return ""
         try:
@@ -202,7 +202,7 @@ class EmailScanner:
             return ""
 
     def _process_sender(self, from_header: str, category: str = None):
-        """Process sender information and update domain data"""
+         
         domain = self._extract_domain_from_email(from_header)
         name, email_addr = parseaddr(from_header)
         
@@ -214,7 +214,7 @@ class EmailScanner:
             self.domain_data[domain]['categories'].add(category)
 
     def _process_content(self, email_message):
-        """Process email content for account indicators and personalization"""
+         
         sender = self._decode_header(email_message['from'])
         subject = self._decode_header(email_message['subject'])
         
@@ -247,7 +247,7 @@ class EmailScanner:
                     continue
 
     def _find_accounts(self, content):
-        """Extract potential account information from content"""
+         
         found_services = set()
         patterns = {
             'Social Media': r'(?i)(facebook|twitter|instagram|linkedin|tiktok|reddit|snapchat|pinterest)',
@@ -270,13 +270,13 @@ class EmailScanner:
         return found_services
 
     def _find_personalization(self, content, sender):
-        """Look for instances of name being used in content"""
+         
         if self.name_to_scan in content.lower():
             if sender:
                 self.personalized_senders.add(sender)
 
     def _process_unsubscribe_url(self, url: str, service: str, timestamp: datetime):
-        """Process and store unsubscribe URL with timestamp"""
+         
         try:
             parsed_url = urlparse(url)
             query_params = parse_qs(parsed_url.query)
@@ -305,7 +305,7 @@ class EmailScanner:
             print(f"Error processing unsubscribe URL: {str(e)}")
 
     def _extract_unsubscribe_info(self, email_message, content: str, service: str):
-        """Extract unsubscribe links with timestamp information"""
+         
         timestamp = email.utils.parsedate_to_datetime(email_message['date']) if email_message['date'] else datetime.now()
         
         # Check List-Unsubscribe header
@@ -328,7 +328,7 @@ class EmailScanner:
                 self._process_unsubscribe_url(match.group(), service, timestamp)
 
     def save_to_file(self):
-        """Save findings to CSV files"""
+         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         # Save personalized senders
@@ -397,13 +397,13 @@ class EmailScanner:
         print(f"2. Domain analysis: {domains_filename}")
 
     def close(self):
-        """Close the IMAP connection"""
+         
         if hasattr(self, 'mail'):
             self.mail.close()
             self.mail.logout()
 
 def parse_arguments():
-    """Parse command line arguments"""
+     
     parser = argparse.ArgumentParser(description='Email Account Scanner')
     parser.add_argument('-e', '--email', required=True, help='Email address to scan')
     parser.add_argument('-p', '--password', required=True, help='Email password or app password')
@@ -438,4 +438,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
