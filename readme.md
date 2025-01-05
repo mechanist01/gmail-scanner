@@ -50,7 +50,7 @@ cd email-scanner
 The scanner script uses command line arguments for configuration:
 
 ```bash
-python email_scanner.py -e EMAIL -p PASSWORD -n NAME [-m MONTHS] [-s SERVER]
+python inboxscanner2.py -e EMAIL -p PASSWORD -n NAME [-m MONTHS] [-s SERVER]
 ```
 
 Arguments:
@@ -63,7 +63,7 @@ Arguments:
 Example:
 ```bash
 # Basic usage with Gmail
-python email_scanner.py -e your.email@gmail.com -p "your app password" -n "Your Name"
+python inboxscanner2.py -e your.email@gmail.com -p "your app password" -n "Your Name"
 ```
 
 ## Unsubscriber Usage
