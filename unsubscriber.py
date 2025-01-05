@@ -54,7 +54,7 @@ class UnsubscribeAutomation:
             self.smtp.starttls()
             self.smtp.login(self.email_address, self.password)
             logging.info("SMTP connection successful")
-            
+             
             return True
         except Exception as e:
             logging.error(f"Connection error: {str(e)}")
