@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 from typing import Dict, Set, Tuple
 from email.utils import parseaddr
 
+
 class EmailScanner:
     def __init__(self, email_address, password, name_to_scan, imap_server="imap.gmail.com"):
         self.email_address = email_address
@@ -17,14 +18,14 @@ class EmailScanner:
         self.name_to_scan = name_to_scan.lower()
         # Track email frequency by domain and sender
         self.domain_data = defaultdict(lambda: {
-            'senders': defaultdict(int),  # Track frequency per sender
-            'categories': set(),          # Track categories this domain belongs to
-            'unsubscribe_data': {},       # Store unsubscribe data
-            'list_unsubscribe': False     # Track List-Unsubscribe header presence
+            'senders': defaultdict(int),          # Track frequency per sender
+            'categories': set(),                  # Track categories this domain belongs to
+            'unsubscribe_data': {},              # Store unsubscribe data
+            'list_unsubscribe': False,           # Track List-Unsubscribe header presence
+            'unsubscribe_urls': set(),           # Store HTTP unsubscribe URLs
+            'unsubscribe_mailtos': set(),        # Store mailto unsubscribe addresses
+            'last_unsubscribe_header': None      # Store the full unsubscribe header
         })
-        self.personalized_senders = set()
-        self.previously_scanned = self._load_previous_scans()
-        self.skipped_count = 0
 
     def connect(self):
         try:
@@ -85,13 +86,10 @@ class EmailScanner:
                     # Check for List-Unsubscribe header
                     domain = self._extract_domain_from_email(from_header)
                     if email_message.get('List-Unsubscribe'):
+                        unsubscribe_header = email_message.get('List-Unsubscribe')
                         self.domain_data[domain]['list_unsubscribe'] = True
-                    
-                    # Add to previously scanned if needed
-                    if from_header not in self.previously_scanned:
-                        if domain in self.previously_scanned:
-                            self.skipped_count += 1
-                            continue
+                        self.domain_data[domain]['last_unsubscribe_header'] = unsubscribe_header
+                        self._store_unsubscribe_info(unsubscribe_header, domain)
                 
                 # Process email body
                 self._process_content(email_message)
@@ -99,6 +97,19 @@ class EmailScanner:
             except Exception as e:
                 print(f"Error processing message: {str(e)}")
                 continue
+
+    def _store_unsubscribe_info(self, header, domain):
+        """Parse and store unsubscribe URLs and mailto addresses"""
+        try:
+            urls = re.findall(r'<(https?://[^>]+)>', header)
+            mailtos = re.findall(r'<mailto:([^>]+)>', header)
+            
+            if urls:
+                self.domain_data[domain]['unsubscribe_urls'].update(urls)
+            if mailtos:
+                self.domain_data[domain]['unsubscribe_mailtos'].update(mailtos)
+        except Exception as e:
+            print(f"Error storing unsubscribe info: {str(e)}")
 
     def _extract_domain_from_email(self, email_str: str) -> str:
         try:
@@ -133,8 +144,7 @@ class EmailScanner:
             'meta': ['facebook', 'instagram', 'whatsapp'],
             'amazon': ['aws', 'prime'],
             'zoom': ['zoominfo', 'zoomvideo'],
-            'youtube': ['yt', 'youtu'],
-            'biotensegrity': ['biotensegrityarchive']
+            'youtube': ['yt', 'youtu']
         }
         
         # Check if service is an alias and return the main name
@@ -143,31 +153,6 @@ class EmailScanner:
                 return main_service
                 
         return service
-
-    def _load_previous_scans(self):
-        try:
-            with open('previously_scanned.txt', 'r', encoding='utf-8') as f:
-                return set(line.strip() for line in f if line.strip())
-        except FileNotFoundError:
-            return set()
-
-    def _save_previous_scans(self):
-        all_items = set()
-        
-        # Add all domains and their senders
-        for domain, data in self.domain_data.items():
-            all_items.add(domain)
-            all_items.update(data['senders'].keys())
-        
-        # Add personalized senders
-        all_items.update(self.personalized_senders)
-        
-        # Add existing items
-        all_items.update(self.previously_scanned)
-        
-        with open('previously_scanned.txt', 'w', encoding='utf-8') as f:
-            for item in sorted(all_items):
-                f.write(f"{item}\n")
 
     def _decode_header(self, header_content):
         if not header_content:
@@ -211,7 +196,6 @@ class EmailScanner:
 
     def _process_content(self, email_message):
         sender = self._decode_header(email_message['from'])
-        subject = self._decode_header(email_message['subject'])
         
         if sender:
             self._process_sender(sender)
@@ -219,11 +203,10 @@ class EmailScanner:
             # Check for List-Unsubscribe header
             domain = self._extract_domain_from_email(sender)
             if email_message.get('List-Unsubscribe'):
+                unsubscribe_header = email_message.get('List-Unsubscribe')
                 self.domain_data[domain]['list_unsubscribe'] = True
-        
-        if self.name_to_scan in subject.lower():
-            if sender:
-                self.personalized_senders.add(sender)
+                self.domain_data[domain]['last_unsubscribe_header'] = unsubscribe_header
+                self._store_unsubscribe_info(unsubscribe_header, domain)
 
         for part in email_message.walk():
             if part.get_content_type() in ["text/plain", "text/html"]:
@@ -231,17 +214,12 @@ class EmailScanner:
                     content = part.get_payload(decode=True)
                     decoded_content = self._decode_content(content)
                     if decoded_content:
-                        # First find accounts
                         found_services = self._find_accounts(decoded_content)
-                        # Then look for unsubscribe info
                         for service_info in found_services:
                             service, category = service_info
                             self._extract_unsubscribe_info(email_message, decoded_content, service)
-                            # Update domain categories
                             domain = self._extract_domain_from_email(service)
                             self.domain_data[domain]['categories'].add(category)
-                            
-                        self._find_personalization(decoded_content, sender)
                 except Exception as e:
                     print(f"Error processing email content: {str(e)}")
                     continue
@@ -268,11 +246,6 @@ class EmailScanner:
                 
         return found_services
 
-    def _find_personalization(self, content, sender):
-        if self.name_to_scan in content.lower():
-            if sender:
-                self.personalized_senders.add(sender)
-
     def _process_unsubscribe_url(self, url: str, service: str, timestamp: datetime):
         try:
             parsed_url = urlparse(url)
@@ -297,6 +270,9 @@ class EmailScanner:
                 existing_timestamp, _ = self.domain_data[domain]['unsubscribe_data'][url]
                 if timestamp > existing_timestamp:
                     self.domain_data[domain]['unsubscribe_data'][url] = (timestamp, tokens[0] if tokens else None)
+                    
+            # Add URL to unsubscribe_urls set
+            self.domain_data[domain]['unsubscribe_urls'].add(url)
                     
         except Exception as e:
             print(f"Error processing unsubscribe URL: {str(e)}")
@@ -326,28 +302,22 @@ class EmailScanner:
     def save_to_file(self):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # Save personalized senders
-        senders_filename = f"personalized_senders_{timestamp}.csv"
-        with open(senders_filename, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Sender Name', 'Email Address', 'Full Header'])
-            for sender in sorted(self.personalized_senders):
-                name, email_addr = parseaddr(sender)
-                writer.writerow([name, email_addr, sender])
-        
         # Save domain data
         domains_filename = f"domain_analysis_{timestamp}.csv"
         with open(domains_filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             # Write header with new column order
             writer.writerow([
-                'Delete',  # New empty column
-                'List-Unsubscribe',  # New column for List-Unsubscribe presence
+                'Delete',                # New empty column
+                'List-Unsubscribe',      # List-Unsubscribe presence
                 'Domain',
                 'Categories',
                 'Unique Senders',
                 'Total Emails',
                 'Sender List',
+                'Unsubscribe URLs',      # New column
+                'Unsubscribe Mailtos',   # New column
+                'Unsubscribe Header',    # New column
                 'Token',
                 'Last Updated'
             ])
@@ -369,6 +339,11 @@ class EmailScanner:
                 token = "N/A"
                 timestamp = "N/A"
                 
+                # Get unsubscribe URLs and mailtos
+                unsubscribe_urls = '; '.join(sorted(data['unsubscribe_urls'])) if data['unsubscribe_urls'] else ''
+                unsubscribe_mailtos = '; '.join(sorted(data['unsubscribe_mailtos'])) if data['unsubscribe_mailtos'] else ''
+                unsubscribe_header = data['last_unsubscribe_header'] if data['last_unsubscribe_header'] else ''
+                
                 if data['unsubscribe_data']:
                     most_recent = max(data['unsubscribe_data'].items(), key=lambda x: x[1][0])
                     timestamp, token = most_recent[1]
@@ -377,24 +352,26 @@ class EmailScanner:
                 # Write row with new column order
                 writer.writerow([
                     '',  # Empty Delete column
-                    'Yes' if data['list_unsubscribe'] else 'No',  # List-Unsubscribe presence
+                    'Yes' if data['list_unsubscribe'] else 'No',
                     domain,
                     categories,
                     sender_count,
                     total_emails,
                     senders_list,
+                    unsubscribe_urls,
+                    unsubscribe_mailtos,
+                    unsubscribe_header,
                     token,
                     timestamp
                 ])
         
-        print(f"\nResults have been saved to:")
-        print(f"1. Domain analysis: {domains_filename}")
-        print(f"2. Personalized senders: {senders_filename}")
+        print(f"\nDomain analysis saved to: {domains_filename}")
 
     def close(self):
         if hasattr(self, 'mail'):
             self.mail.close()
             self.mail.logout()
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Email Account Scanner')
@@ -409,6 +386,7 @@ def parse_arguments():
     
     return args
 
+
 def main():
     # Parse command line arguments
     args = parse_arguments()
@@ -420,11 +398,12 @@ def main():
         scanner.scan_emails(months_back=args.months)
         print("\n\nScan complete! Saving results...")
         scanner.save_to_file()
-        scanner._save_previous_scans()
         scanner.close()
         print("\nProcess finished!")
+        print("Remember to delete your temporary Gmail app password if you used one!")
     else:
         print("Failed to connect to email server.")
+
 
 if __name__ == "__main__":
     main()

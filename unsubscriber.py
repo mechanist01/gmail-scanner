@@ -7,6 +7,9 @@ import requests
 import smtplib
 import logging
 import sys
+import shutil
+import tempfile
+from pathlib import Path
 from datetime import datetime, timedelta
 from email.utils import parseaddr
 from urllib.parse import unquote, parse_qs, urlparse
@@ -24,82 +27,25 @@ class UnsubscribeAutomation:
         self.mail = None
         self.smtp = None
         self.processed_domains = set()
-        self.setup_logging()
-
-    def setup_logging(self):
-         
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_filename = f"unsubscribe_log_{timestamp}.txt"
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_filename),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
-        logging.info("Starting unsubscribe automation")
+        logging.basicConfig(level=logging.ERROR, format='%(levelname)s - %(message)s')
 
     def connect(self):
-         
+        """Connect to both IMAP and SMTP servers"""
         try:
-            logging.info(f"Connecting to IMAP server: {self.imap_server}")
             self.mail = imaplib.IMAP4_SSL(self.imap_server)
             self.mail.login(self.email_address, self.password)
-            logging.info("IMAP connection successful")
             
-            logging.info(f"Connecting to SMTP server: {self.smtp_server}")
             self.smtp = smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=30)
             self.smtp.starttls()
             self.smtp.login(self.email_address, self.password)
-            logging.info("SMTP connection successful")
-             
+            
             return True
         except Exception as e:
             logging.error(f"Connection error: {str(e)}")
             return False
 
-    def decode_header_string(self, header):
-         
-        logging.info("Decoding header string")
-        try:
- 
-            header = ' '.join(header.split())
-            
- 
-            decoded = ''
-            parts = re.findall(r'=\?us-ascii\?Q\?(.*?)\?=', header)
-            
-            if parts:
- 
-                encoded = ''.join(parts)
-                
- 
-                decoded = encoded.replace('=3D', '=')
-                decoded = decoded.replace('=3F', '?')
-                decoded = decoded.replace('=2E', '.')
-                decoded = decoded.replace('=2F', '/')
-                decoded = decoded.replace('=5F', '_')
-                decoded = decoded.replace('=2D', '-')
-                decoded = decoded.replace('=3C', '<')
-                decoded = decoded.replace('=3E', '>')
-                decoded = decoded.replace('=40', '@')
-                decoded = unquote(decoded)
-            else:
-                decoded = header
-                
-            logging.info(f"Decoded header: {decoded}")
-            return decoded
-        except Exception as e:
-            logging.error(f"Error decoding header: {str(e)}")
-            return header
-
     def parse_mailto(self, mailto_str):
-         
-        logging.info(f"Parsing mailto link: {mailto_str}")
         try:
- 
             mailto_str = unquote(mailto_str.strip())
             if '?' in mailto_str:
                 email_part, params_part = mailto_str.split('?', 1)
@@ -107,7 +53,6 @@ class UnsubscribeAutomation:
                 email_part = mailto_str
                 params_part = ''
                 
- 
             params = {}
             if params_part:
                 param_pairs = params_part.split('&')
@@ -116,20 +61,16 @@ class UnsubscribeAutomation:
                         key, value = pair.split('=', 1)
                         params[key.lower()] = unquote(value)
             
-            result = {
+            return {
                 'email': email_part,
                 'subject': params.get('subject', 'Unsubscribe'),
                 'body': params.get('body', '')
             }
-            logging.info(f"Parsed mailto info: {result}")
-            return result
         except Exception as e:
             logging.error(f"Error parsing mailto: {str(e)}")
             return None
 
     def send_unsubscribe_email(self, mailto_info):
-         
-        logging.info(f"Preparing to send unsubscribe email to: {mailto_info['email']}")
         try:
             msg = MIMEMultipart()
             msg['From'] = self.email_address
@@ -139,25 +80,21 @@ class UnsubscribeAutomation:
             body = mailto_info['body'] if mailto_info['body'] else 'Please unsubscribe me from this mailing list.'
             msg.attach(MIMEText(body, 'plain'))
             
-            logging.info("Sending unsubscribe email...")
             self.smtp.send_message(msg, timeout=30)
-            logging.info("Unsubscribe email sent successfully")
             return True
         except Exception as e:
             logging.error(f"Error sending unsubscribe email: {str(e)}")
             return False
-    
+
+    def extract_unsubscribe_info_from_header(self, header):
+        urls = re.findall(r'<(https?://[^>]+)>', header)
+        mailtos = re.findall(r'<mailto:([^>]+)>', header)
+        return urls, mailtos
+
     def clean_url(self, url):
-         
-        logging.info(f"Cleaning URL: {url}")
         try:
- 
             url = url.replace('=3A//', '://')
-            
- 
             url = url.replace('=3A', ':')
-            
- 
             url = url.replace('=2E', '.')
             url = url.replace('=2F', '/')
             url = url.replace('=5F', '_')
@@ -165,165 +102,127 @@ class UnsubscribeAutomation:
             url = url.replace('=3D', '=')
             url = url.replace('=26', '&')
             url = url.replace('=3F', '?')
-            
- 
             url = unquote(url)
-            
-            logging.info(f"Cleaned URL: {url}")
             return url
         except Exception as e:
             logging.error(f"Error cleaning URL: {str(e)}")
             return url
 
-    def extract_unsubscribe_info(self, header):
-         
-        logging.info("Extracting unsubscribe info from header")
-        try:
- 
-            decoded_header = self.decode_header_string(header)
-            
- 
-            urls = []
-            mailtos = []
-            
- 
-            parts = re.findall(r'<([^>]+)>', decoded_header)
-            
-            for part in parts:
-                clean_part = self.clean_url(part).strip()
-                if clean_part.startswith('http'):
-                    urls.append(clean_part)
-                elif clean_part.startswith('mailto:'):
-                    mailtos.append(clean_part.replace('mailto:', ''))
-            
-            logging.info(f"Found URLs: {urls}")
-            logging.info(f"Found mailto addresses: {mailtos}")
-            
-            return urls, mailtos
-        except Exception as e:
-            logging.error(f"Error extracting unsubscribe info: {str(e)}")
-            return [], []
-
-    def find_unsubscribe_info(self, domain, days_back=30):
-         
-        logging.info(f"Searching for unsubscribe info for domain: {domain}")
-        if not self.mail:
-            logging.error("No IMAP connection available")
-            return None, None
-
-        try:
-            self.mail.select('inbox')
-            date = (datetime.now() - timedelta(days=days_back)).strftime("%d-%b-%Y")
-            logging.info(f"Searching emails since: {date}")
-            
-            _, messages = self.mail.search(None, f'(SINCE {date})')
-            
-            if not messages[0]:
-                logging.info(f"No messages found for domain {domain}")
-                return None, None
-                
-            email_ids = messages[0].split()
-            logging.info(f"Found {len(email_ids)} emails to check")
-            
-            for email_id in reversed(email_ids):
-                try:
-                    logging.debug(f"Checking email ID: {email_id}")
-                    _, msg_data = self.mail.fetch(email_id, '(RFC822)')
-                    email_message = email.message_from_bytes(msg_data[0][1])
-                    
-                    from_header = email_message.get('from', '')
-                    if domain.lower() in from_header.lower():
-                        logging.info(f"Found matching email from: {from_header}")
-                        unsubscribe_header = email_message.get('List-Unsubscribe')
-                        if unsubscribe_header:
-                            logging.info(f"Found List-Unsubscribe header: {unsubscribe_header}")
-                            return self.extract_unsubscribe_info(unsubscribe_header)
-                except Exception as e:
-                    logging.error(f"Error processing email {email_id}: {str(e)}")
-                    continue
-                    
-        except Exception as e:
-            logging.error(f"Error searching emails for {domain}: {str(e)}")
-            
-        logging.info(f"No unsubscribe information found for {domain}")
-        return None, None
-
-    def unsubscribe_from_domain(self, domain):
-         
-        logging.info(f"\n{'='*50}\nProcessing unsubscribe request for {domain}")
-        
-        urls, mailtos = self.find_unsubscribe_info(domain)
+    def try_unsubscribe_with_stored_data(self, row):
+        """Attempt to unsubscribe using stored information from CSV"""
+        domain = row['Domain']
         success = False
+        error_reason = None
         
-        if urls:
- 
+        # Try stored HTTP URLs first
+        if row.get('Unsubscribe URLs'):
+            urls = [url.strip() for url in row['Unsubscribe URLs'].split(';') if url.strip()]
             for url in urls:
-                logging.info(f"Attempting HTTP unsubscribe: {url}")
                 try:
                     response = requests.get(url, timeout=30)
                     if response.status_code == 200:
-                        logging.info(f"Successfully unsubscribed from {domain} via HTTP")
-                        success = True
-                        break
+                        return True, "Success via stored HTTP URL"
                     else:
-                        logging.warning(f"HTTP unsubscribe failed for {domain} (Status: {response.status_code})")
+                        error_reason = f"HTTP {response.status_code}"
                 except Exception as e:
-                    logging.error(f"Error during HTTP unsubscribe for {domain}: {str(e)}")
-        
-        if not success and mailtos:
-            logging.info("HTTP unsubscribe failed or unavailable, trying mailto")
+                    error_reason = f"HTTP request failed: {str(e)}"
+
+        # Try stored mailto addresses
+        if not success and row.get('Unsubscribe Mailtos'):
+            mailtos = [mailto.strip() for mailto in row['Unsubscribe Mailtos'].split(';') if mailto.strip()]
             for mailto in mailtos:
                 mailto_info = self.parse_mailto(mailto)
                 if mailto_info and self.send_unsubscribe_email(mailto_info):
-                    logging.info(f"Successfully sent unsubscribe email to {mailto_info['email']}")
-                    success = True
-                    break
+                    return True, "Success via stored mailto"
                 else:
-                    logging.error(f"Failed to send unsubscribe email for {domain}")
+                    error_reason = error_reason or "Mailto failed"
+
+        # Try original unsubscribe header if available
+        if not success and row.get('Unsubscribe Header'):
+            try:
+                urls = re.findall(r'<(https?://[^>]+)>', row['Unsubscribe Header'])
+                mailtos = re.findall(r'<mailto:([^>]+)>', row['Unsubscribe Header'])
+                
+                for url in urls:
+                    try:
+                        response = requests.get(url, timeout=30)
+                        if response.status_code == 200:
+                            return True, "Success via header URL"
+                        else:
+                            error_reason = f"Header HTTP {response.status_code}"
+                    except Exception as e:
+                        error_reason = error_reason or f"Header HTTP failed: {str(e)}"
+                
+                for mailto in mailtos:
+                    mailto_info = self.parse_mailto(mailto)
+                    if mailto_info and self.send_unsubscribe_email(mailto_info):
+                        return True, "Success via header mailto"
+                    else:
+                        error_reason = error_reason or "Header mailto failed"
+                        
+            except Exception as e:
+                error_reason = error_reason or f"Header processing failed: {str(e)}"
         
-        if not success:
-            logging.warning(f"No successful unsubscribe method found for {domain}")
-        
-        return success
+        return False, error_reason or "All methods failed"
 
     def process_csv(self, csv_path):
-         
-        logging.info(f"Processing CSV file: {csv_path}")
+        """Process the domain analysis CSV file and update with results"""
         try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                total_rows = sum(1 for row in reader)
-                f.seek(0)  # Reset file pointer
-                next(reader)  # Skip header row
+            # Create a temporary file for writing
+            temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, newline='')
+            
+            with open(csv_path, 'r', newline='') as csvfile:
+                reader = csv.DictReader(csvfile)
+                fieldnames = ['Status'] + reader.fieldnames  # Add Status column
+                
+                writer = csv.DictWriter(temp_file, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                total_rows = sum(1 for _ in reader)
+                csvfile.seek(0)
+                next(reader)  # Skip header again
                 
                 for i, row in enumerate(reader, 1):
-                    logging.info(f"Processing row {i} of {total_rows}")
+                    print(f"\rProcessing {i}/{total_rows}", end='', flush=True)
+                    
                     if (row['Delete'].strip().lower() == 'yes' and 
                         row['List-Unsubscribe'].strip().lower() == 'yes' and 
                         row['Domain'] not in self.processed_domains):
                         
-                        if self.unsubscribe_from_domain(row['Domain']):
+                        success, status_message = self.try_unsubscribe_with_stored_data(row)
+                        if success:
                             self.processed_domains.add(row['Domain'])
+                        row['Status'] = status_message
+                    else:
+                        row['Status'] = 'Skipped'
+                    
+                    writer.writerow(row)
+            
+            print("\n")  # New line after progress
+            temp_file.close()
+            
+            # Replace the original file with the updated one
+            shutil.move(temp_file.name, csv_path)
+            
         except Exception as e:
             logging.error(f"Error processing CSV: {str(e)}")
+            if temp_file:
+                Path(temp_file.name).unlink(missing_ok=True)
 
     def close(self):
-         
-        logging.info("Closing connections")
+        """Close all connections"""
         if self.mail:
             try:
                 self.mail.close()
                 self.mail.logout()
-                logging.info("IMAP connection closed")
             except:
-                logging.error("Error closing IMAP connection")
+                pass
         
         if self.smtp:
             try:
                 self.smtp.quit()
-                logging.info("SMTP connection closed")
             except:
-                logging.error("Error closing SMTP connection")
+                pass
 
 
 def main():
@@ -339,16 +238,19 @@ def main():
     automation = UnsubscribeAutomation(args.email, args.password, args.server)
     
     if automation.connect():
+        print("Processing unsubscribe requests...")
         automation.process_csv(args.csv)
         automation.close()
         
         if automation.processed_domains:
-            logging.info("\nProcessed domains:")
+            print(f"\nSuccessfully processed {len(automation.processed_domains)} domains")
+            print("\nSuccessfully unsubscribed from:")
             for domain in sorted(automation.processed_domains):
-                logging.info(f"- {domain}")
-        logging.info("Unsubscribe process completed!")
+                print(f"- {domain}")
+        print("\nDone! Check the CSV file for detailed results.")
+        print("Remember to delete your temporary Gmail app password if you used one!")
     else:
-        logging.error("Failed to connect to email servers")
+        print("Failed to connect to email servers")
 
 
 if __name__ == "__main__":
