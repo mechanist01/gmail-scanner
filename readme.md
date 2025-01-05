@@ -4,20 +4,21 @@ A Python tool for analyzing your email inbox to discover and track your digital 
 
 ## Features
 
-- Scans email inbox for specified time periods (default: 6 months)
+- Scans email inbox for specified time periods (default: 12 months)
+- Groups communications by domain with frequency tracking
 - Identifies linked services and accounts across multiple categories:
-  - Social Media
-  - Shopping
-  - Finance
-  - Cloud Services
-  - Subscription Services
-  - Gaming
-  - Professional
-  - Travel
+  - Social Media (Facebook, Twitter, Instagram, etc.)
+  - Shopping (Amazon, eBay, Etsy, etc.)
+  - Finance (PayPal, Stripe, banking, crypto)
+  - Cloud Services (Google, Dropbox, iCloud)
+  - Subscription Services (Netflix, Spotify, Disney+)
+  - Gaming (Steam, Epic, PlayStation)
+  - Professional (Slack, Zoom, GitHub)
+  - Travel (Airbnb, Booking, Uber)
 - Detects personalized emails using your name
-- Tracks email marketing and analytics elements
+- Extracts and tracks unsubscribe links with tokens
 - Maintains history of scanned emails to avoid duplicates
-- Generates detailed reports of findings
+- Generates detailed CSV reports for easy analysis
 - Supports multiple email encoding formats
 - Compatible with Gmail and other IMAP servers
 
@@ -30,28 +31,44 @@ A Python tool for analyzing your email inbox to discover and track your digital 
 ## Required Python Packages
 
 ```bash
-pip install imaplib-ext
+pip install imaplib
 ```
 
 ## Installation
 
 1. Clone this repository or download the script:
 ```bash
-git clone [repository-url]
+git clone https://github.com/mechanist01/gmail-scanner
 cd email-scanner
 ```
 
 2. Make sure you have the required Python packages installed
 
-## Configuration
+## Command Line Usage
 
-Before running the scanner, you need to configure the following in the `main()` function:
+The script uses command line arguments for configuration:
 
-```python
-email_address = "your.email@gmail.com"    # Your email address
-password = "your-app-password-here"       # Your password/app password
-name_to_scan = "Your Name"                # Your name to scan for
-months_to_scan = 12                       # Number of months to scan
+```bash
+python email_scanner.py -e EMAIL -p PASSWORD -n NAME [-m MONTHS] [-s SERVER]
+```
+
+Arguments:
+- `-e, --email`: Your email address (required)
+- `-p, --password`: Your password or app password (required, use quotes if contains spaces)
+- `-n, --name`: Your name to scan for (required)
+- `-m, --months`: Number of months to scan (optional, default: 12)
+- `-s, --server`: IMAP server (optional, default: imap.gmail.com)
+
+Examples:
+```bash
+# Basic usage with Gmail
+python email_scanner.py -e your.email@gmail.com -p "your app password" -n "Your Name"
+
+# Scan last month only
+python email_scanner.py -e your.email@gmail.com -p "your app password" -n "Your Name" -m 1
+
+# Use different IMAP server
+python email_scanner.py -e your.email@outlook.com -p "password" -n "Name" -s outlook.office365.com
 ```
 
 ### Gmail-Specific Setup
@@ -62,56 +79,25 @@ If you're using Gmail with 2-Factor Authentication:
 3. Generate an app password for this script
 4. Use that app password instead of your regular password
 
-## Usage
-
-Run the script from the command line:
-
-```bash
-python email_scanner.py
-```
-
-The script will:
-1. Connect to your email server
-2. Scan emails from the specified period
-3. Generate a report of findings
-4. Save results to a timestamped file
-5. Maintain a record of previously scanned emails
-
 ## Output Files
 
-The script generates two types of output files:
+The script generates three types of output files:
 
-1. `email_scan_results_[TIMESTAMP].txt`
-   - Contains detailed scan results
-   - Lists discovered services and accounts
-   - Shows personalized senders
+1. `personalized_senders_[TIMESTAMP].csv`
+   - Columns: Sender Name, Email Address, Full Header
+   - Lists all senders who used your name in communications
 
-2. `previously_scanned.txt`
+2. `domain_analysis_[TIMESTAMP].csv`
+   - Columns: Domain, Categories, Unique Senders, Total Emails, Sender List, Unsubscribe URL, Token, Last Updated
+   - Groups communications by domain
+   - Shows categorization and frequency
+   - Includes unsubscribe information
+   - Only includes domains with 2+ emails
+
+3. `previously_scanned.txt`
    - Maintains record of scanned emails
    - Used to avoid duplicate scanning
    - Updated after each successful scan
-
-## Sample Output Structure
-
-```
-=== Email Account Scanner Report ===
-Scanned email: your.email@gmail.com
-Scanning for name: Your Name
-Skipped X previously scanned emails
-
-Senders using your name:
-  - sender1@example.com
-  - sender2@example.com
-
-Found accounts by category:
-Social Media:
-  - facebook
-  - twitter
-Shopping:
-  - amazon
-  - ebay
-...
-```
 
 ## Privacy and Security Notes
 
@@ -137,6 +123,7 @@ The script includes error handling for:
 - Email decoding issues
 - File operations
 - Content processing errors
+- Password parsing with spaces
 
 ## Contributing
 
@@ -146,11 +133,31 @@ Feel free to fork this repository and submit pull requests for any improvements.
 - Implement multiprocessing for faster scanning
 - Add more account patterns and categories
 - Improve email content parsing
-- Add export options in different formats
+- Add additional export formats
 
 ## License
 
-[Add your chosen license here]
+MIT License
+
+Copyright (c) 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## Disclaimer
 
