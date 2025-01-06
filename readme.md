@@ -32,7 +32,7 @@ pip install imaplib requests
 1. Clone this repository or download the scripts:
 ```bash
 git clone https://github.com/mechanist01/gmail-scanner
-cd email-scanner
+cd gmail-scanner
 ```
 
 2. Make sure you have the required Python packages installed
